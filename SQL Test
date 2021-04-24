@@ -1,0 +1,50 @@
+# 1. Build a query to count the number of loans per customer.
+Select count(loanid)/count(distinct(custid)) as number_of_loans_per_custmer 
+from all_loans;
+
+# 2. Write a query to identify if a customer had more than one active loan at the same time.
+Select custid
+from all_loans
+where approvedate > payoffdate or approvedate > writeoffdate
+group by custid
+having count(loanid) >= 2;
+
+# 2a. 
+Select custid, loanid
+from all_loanhist
+inner join all_loans on all_loanhist.loan_id = all_loans.loan_id;
+
+# 3. Write a query to pull loanid, custid, first name, last name, and loan amount from all_loans where
+# the approvedate is after Jan 1, 2019, the state of the loan is in CA, the first name of the customer
+# is either Matt, Kyle, Jessica or Mary and the last name of the customer starts with the letter 'Y'.
+
+select loanid, custid, fn, ln, amount 
+from all_loans 
+where approvedate > '1/1/2019' and state = 'CA' 
+having (fn = 'Matt' or fn = 'Kyle' or fn = 'Jessica' or fn = 'Mary') and ln like 'Y%';
+
+# 4. Write a query to calculate how much payment is received from each customer in the first 6
+# months of them being a customer (only include payments for the first loan).
+
+select custid, fn,ln, loanid, sum(amount_paid)
+from all_loans 
+left join all_loanhist on  all_loanhist.loan_id = all_loans.loan_id
+group by custid
+having TIMESTAMPDIFF(Month, 'approvedate', 'snapshot_date') <= 6
+order by approvedate limit  1;
+
+# 5.Write a query to show the total % of principal collected as a percentage of the total loan amount
+# in the first 6 months for each customer (if a customer has multiple loans, include all loans
+# approved within 6 months of the customer's first loan).
+
+select custid, sum(all_loanhist.amount_paid)/all_loans.amount as 'total % of principal collected'
+from all_loans
+left join all_loanhist on all_loanhist.loan_id = all_loans.loan_id
+group by custid
+having TIMESTAMPDIFF(Month, min('approvedate'), 'snapshot_date') <= 6;
+
+
+
+
+
+
