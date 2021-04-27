@@ -1,18 +1,21 @@
-# 1. Build a query to count the number of loans per customer.
+# 1. Build a query to count the number of loans per customer. 
 Select count(loanid)/count(distinct(custid)) as number_of_loans_per_custmer 
 from all_loans;
 
 # 2. Write a query to identify if a customer had more than one active loan at the same time.
-Select custid
-from all_loans
-where approvedate > payoffdate or approvedate > writeoffdate
-group by custid
-having count(loanid) >= 2;
-
-# 2a. 
-Select custid, loanid
-from all_loanhist
-inner join all_loans on all_loanhist.loan_id = all_loans.loan_id;
+SELECT custid
+FROM 
+    (SELECT 
+        custid
+        ,loanid
+        ,CASE WHEN LAG(COALESCE(payoffdate,writeoffdate)) 
+                       OVER(PARTITION BY custid ORDER BY approvedate)
+                   > approvedate
+              THEN 1 ELSE 0
+         END AS overlap_yn
+     FROM all_loans) a
+GROUP BY a.custid
+HAVING MAX(overlap_yn)=1;
 
 # 3. Write a query to pull loanid, custid, first name, last name, and loan amount from all_loans where
 # the approvedate is after Jan 1, 2019, the state of the loan is in CA, the first name of the customer
@@ -33,6 +36,40 @@ group by custid
 having TIMESTAMPDIFF(Month, 'approvedate', 'snapshot_date') <= 6
 order by approvedate limit  1;
 
+
+/* 
+DROP TABLE IF EXISTS loans_per_cust_rnk;
+CREATE TEMP TABLE loans_per_cust_rnk AS
+SELECT 
+cust_id
+    ,loanid 
+    ,approvedate
+    ,ROW_NUMBER() OVER(PARTITION BY cust_id ORDER BY approvedate,loan_id) AS rnk
+FROM 
+all_loanhist a
+    INNER JOIN all_loans b ON
+a.loanid = b.loanid
+GROUP BY 1,2,3
+;
+
+
+DROP TABLE IF EXISTS answer4;
+CREATE TEMP TABLE answer4 AS
+SELECT
+a.cust_id
+    ,SUM(a.amount_paid)
+FROM 
+all_loanhist a
+INNER JOIN loans_per_cust_rnk b ON
+a.loanid=b.loanid
+        AND b.rnk=1
+WHERE 
+a.snapshotdate::DATE <= b.approvedate::DATE + INTERVAL '6 MONTHS'
+GROUP BY 1
+;
+*/
+
+
 # 5.Write a query to show the total % of principal collected as a percentage of the total loan amount
 # in the first 6 months for each customer (if a customer has multiple loans, include all loans
 # approved within 6 months of the customer's first loan).
@@ -43,8 +80,32 @@ left join all_loanhist on all_loanhist.loan_id = all_loans.loan_id
 group by custid
 having TIMESTAMPDIFF(Month, min('approvedate'), 'snapshot_date') <= 6;
 
+/* 
+DROP TABLE IF EXISTS loans_per_cust_rnk;
+CREATE TEMP TABLE loans_per_cust_rnk AS
+SELECT 
+cust_id
+    ,loanid 
+    ,approvedate
+    ,ROW_NUMBER() OVER(PARTITION BY cust_id ORDER BY approvedate,loan_id) AS rnk
+FROM 
+all_loanhist a
+    INNER JOIN all_loans b ON
+a.loanid = b.loanid
+GROUP BY 1,2,3
+;
 
 
-
-
-
+DROP TABLE IF EXISTS answer5;
+CREATE TEMP TABLE answer5 AS
+SELECT
+a.cust_id
+    ,SUM(a.totprincpaid)/SUM(a.amount_paid) AS 'Total % of principal collected'
+FROM 
+all_loanhist a
+LEFT JOIN loans_per_cust_rnk b ON
+a.loanid=b.loanid
+        AND b.rnk=1
+WHERE 
+a.snapshotdate::DATE <= b.approvedate::DATE + INTERVAL '6 MONTHS'
+GROUP BY 1
